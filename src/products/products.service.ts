@@ -2,10 +2,9 @@ import { Injectable, UseGuards } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ProductDocument, Products } from './products.schema';
 import { Model } from 'mongoose';
-import { AuthGuard } from 'src/guards/auth/auth.guard';
-import { RolesGuard } from 'src/guards/auth/roles.guard';
-import { Roles } from 'src/guards/auth/roles.decorator';
-
+import { createClient } from 'redis';
+const client = createClient();
+client.connect()
 
 @Injectable()
 export class ProductsService {
@@ -31,8 +30,20 @@ export class ProductsService {
     {
         try
         {
+            const product = await client.get(`product:${id}`)
+            if(product)
+            {
+                console.log("this is from redis server")
+                return JSON.parse(product)
+            }
             const products =  await this.Products.findById(id)
-            return products
+            if (products)
+            {
+                await client.set(`product:${id}`, JSON.stringify({name:products.name, price:products.price, description:products.description}))
+                console.log("this is from the Db direct")
+                return products
+            }
+            return "Product doesn't exist in our database"
         }
         catch(err)
         {
@@ -65,7 +76,11 @@ export class ProductsService {
         try
         {
             const products =  await this.Products.findByIdAndDelete(id)
-            if(products) return products
+            if(products) 
+            {
+                await client.del(`product:${id}`)
+                return products
+            }
             return "Product doesn't exist to be deleted"
         }
         catch(err)
@@ -80,7 +95,12 @@ export class ProductsService {
         try
         {
             const products =  await this.Products.findByIdAndUpdate(id, userData)
-            return products
+            if(products)
+            {
+                await client.set(`user:${id}`,JSON.stringify({name:products.name,price:products.price,description:products.description}))
+                return products
+            }
+            return "Product doesn't exits in database"
         }
         catch(err)
         {
